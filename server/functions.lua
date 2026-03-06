@@ -1,14 +1,7 @@
 -- Local Functions
 
 local function InitializeInventory(inventoryId, data)
-    Inventories[inventoryId] = {
-        items = {},
-        isOpen = false,
-        label = data and data.label or inventoryId,
-        maxweight = data and data.maxweight or Config.StashSize.maxweight,
-        slots = data and data.slots or Config.StashSize.slots
-    }
-    return Inventories[inventoryId]
+    return EnsureInventoryLoaded(inventoryId, data)
 end
 
 local function GetFirstFreeSlot(items, maxSlots)
@@ -132,16 +125,14 @@ exports('SaveInventory', SaveInventory)
 function SetInventory(identifier, items, reason)
     local player = QBCore.Functions.GetPlayer(identifier)
 
-    print('Setting inventory for ' .. identifier)
-
-    if not player and not Inventories[identifier] and not Drops[identifier] then
+    if not player and not EnsureInventoryLoaded(identifier) and not Drops[identifier] then
         print('SetInventory: Inventory not found')
         return
     end
 
     if player then
         player.Functions.SetPlayerData('items', items)
-        if not player.Offline then
+        if not player.Offline and InventoryShouldLog('set', identifier) then
             local logMessage = string.format('**%s (citizenid: %s | id: %s)** items set: %s', GetPlayerName(identifier), player.PlayerData.citizenid, identifier, json.encode(items))
             TriggerEvent('qb-log:server:CreateLog', 'playerinventory', 'SetInventory', 'blue', logMessage)
         end
@@ -149,21 +140,24 @@ function SetInventory(identifier, items, reason)
         Drops[identifier].items = items
     elseif Inventories[identifier] then
         Inventories[identifier].items = items
+        MarkInventoryDirty(identifier)
     end
 
-    local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
-    local setReason = reason or 'No reason specified'
-    local resourceName = GetInvokingResource() or 'qb-inventory'
-    TriggerEvent(
-        'qb-log:server:CreateLog',
-        'playerinventory',
-        'Inventory Set',
-        'blue',
-        '**Inventory:** ' .. invName .. '\n' ..
-        '**Items:** ' .. json.encode(items) .. '\n' ..
-        '**Reason:** ' .. setReason .. '\n' ..
-        '**Resource:** ' .. resourceName
-    )
+    if InventoryShouldLog('set', identifier) then
+        local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
+        local setReason = reason or 'No reason specified'
+        local resourceName = GetInvokingResource() or 'qb-inventory'
+        TriggerEvent(
+            'qb-log:server:CreateLog',
+            'playerinventory',
+            'Inventory Set',
+            'blue',
+            '**Inventory:** ' .. invName .. '\n' ..
+            '**Items:** ' .. json.encode(items) .. '\n' ..
+            '**Reason:** ' .. setReason .. '\n' ..
+            '**Resource:** ' .. resourceName
+        )
+    end
 end
 
 exports('SetInventory', SetInventory)
@@ -309,7 +303,7 @@ function GetSlots(identifier)
     if player then
         inventory = player.PlayerData.items
         maxSlots = Config.MaxSlots
-    elseif Inventories[identifier] then
+    elseif EnsureInventoryLoaded(identifier) then
         inventory = Inventories[identifier].items
         maxSlots = Inventories[identifier].slots
     elseif Drops[identifier] then
@@ -664,7 +658,8 @@ exports('CreateInventory', CreateInventory)
 --- @param identifier string The identifier of the inventory to retrieve.
 --- @return table|nil - The inventory object if found, nil otherwise.
 function GetInventory(identifier)
-    return Inventories[identifier]
+    if not identifier then return nil end
+    return EnsureInventoryLoaded(identifier)
 end
 
 exports('GetInventory', GetInventory)
@@ -747,7 +742,7 @@ function AddItem(identifier, item, amount, slot, info, reason)
         inventory = player.PlayerData.items
         inventoryWeight = Config.MaxWeight
         inventorySlots = Config.MaxSlots
-    elseif Inventories[identifier] then
+    elseif EnsureInventoryLoaded(identifier) then
         inventory = Inventories[identifier].items
         inventoryWeight = Inventories[identifier].maxweight
         inventorySlots = Inventories[identifier].slots
@@ -817,21 +812,28 @@ function AddItem(identifier, item, amount, slot, info, reason)
         end
     end
 
-    if player then player.Functions.SetPlayerData('items', inventory) end
-    local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
-    local addReason = reason or 'No reason specified'
-    local resourceName = GetInvokingResource() or 'qb-inventory'
-    TriggerEvent(
-        'qb-log:server:CreateLog',
-        'playerinventory',
-        'Item Added',
-        'green',
-        '**Inventory:** ' .. invName .. ' (Slot: ' .. slot .. ')\n' ..
-        '**Item:** ' .. item .. '\n' ..
-        '**Amount:** ' .. amount .. '\n' ..
-        '**Reason:** ' .. addReason .. '\n' ..
-        '**Resource:** ' .. resourceName
-    )
+    if player then
+        player.Functions.SetPlayerData('items', inventory)
+    elseif Inventories[identifier] then
+        MarkInventoryDirty(identifier)
+    end
+
+    if InventoryShouldLog('item', identifier) then
+        local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
+        local addReason = reason or 'No reason specified'
+        local resourceName = GetInvokingResource() or 'qb-inventory'
+        TriggerEvent(
+            'qb-log:server:CreateLog',
+            'playerinventory',
+            'Item Added',
+            'green',
+            '**Inventory:** ' .. invName .. ' (Slot: ' .. slot .. ')\n' ..
+            '**Item:** ' .. item .. '\n' ..
+            '**Amount:** ' .. amount .. '\n' ..
+            '**Reason:** ' .. addReason .. '\n' ..
+            '**Resource:** ' .. resourceName
+        )
+    end
     return true
 end
 
@@ -855,7 +857,7 @@ function RemoveItem(identifier, item, amount, slot, reason)
 
     if player then
         inventory = player.PlayerData.items
-    elseif Inventories[identifier] then
+    elseif EnsureInventoryLoaded(identifier) then
         inventory = Inventories[identifier].items
     elseif Drops[identifier] then
         inventory = Drops[identifier].items
@@ -904,35 +906,40 @@ function RemoveItem(identifier, item, amount, slot, reason)
 
     if player then
         player.Functions.SetPlayerData('items', inventory)
-        
+
         local itemInfo = QBCore.Shared.Items[item:lower()]
         if itemInfo and itemInfo.type == 'weapon' and inventoryItem.amount <= 0 then
             checkWeapon(identifier, item)
         end
+    elseif Inventories[identifier] then
+        MarkInventoryDirty(identifier)
     end
 
-    local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
-    local removeReason = reason or 'No reason specified'
-    local resourceName = GetInvokingResource() or 'qb-inventory'
+    if InventoryShouldLog('item', identifier) then
+        local invName = player and GetPlayerName(identifier) .. ' (' .. identifier .. ')' or identifier
+        local removeReason = reason or 'No reason specified'
+        local resourceName = GetInvokingResource() or 'qb-inventory'
 
-    TriggerEvent(
-        'qb-log:server:CreateLog',
-        'playerinventory',
-        'Item Removed',
-        'red',
-        '**Inventory:** ' .. invName .. ' (Slot: ' .. slot .. ')\n' ..
-        '**Item:** ' .. item .. '\n' ..
-        '**Amount:** ' .. amount .. '\n' ..
-        '**Reason:** ' .. removeReason .. '\n' ..
-        '**Resource:** ' .. resourceName
-    )
+        TriggerEvent(
+            'qb-log:server:CreateLog',
+            'playerinventory',
+            'Item Removed',
+            'red',
+            '**Inventory:** ' .. invName .. ' (Slot: ' .. slot .. ')\n' ..
+            '**Item:** ' .. item .. '\n' ..
+            '**Amount:** ' .. amount .. '\n' ..
+            '**Reason:** ' .. removeReason .. '\n' ..
+            '**Resource:** ' .. resourceName
+        )
+    end
     return true
 end
 
 exports('RemoveItem', RemoveItem)
 
 function GetInventory(identifier)
-    return Inventories[identifier]
+    if not identifier then return nil end
+    return EnsureInventoryLoaded(identifier)
 end
 
 exports('GetInventory', GetInventory)

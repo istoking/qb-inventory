@@ -50,6 +50,26 @@ const InventoryContainer = Vue.createApp({
     },
     shouldCenterInventory() {
       return this.isOtherInventoryEmpty
+    },
+    canVerticalResize() {
+      return !this.isOtherInventoryEmpty
+    },
+    inventoryContainerStyle() {
+      if (!this.windowLayoutReady) return {}
+      const baseWidth = this.getWindowBaseWidth()
+      const baseHeight = this.getWindowBaseHeight()
+      const widthScale = this.windowSize.width / baseWidth
+      const heightScale = this.windowSize.height / baseHeight
+      const uiScale = Math.max(0.82, Math.min(Math.min(widthScale, heightScale), 1.35))
+
+      return {
+        left: `${this.windowPosition.left}px`,
+        top: `${this.windowPosition.top}px`,
+        width: `${this.windowSize.width}px`,
+        height: `${this.windowSize.height}px`,
+        transform: 'none',
+        '--inventory-scale': uiScale.toFixed(4)
+      }
     }
   },
   watch: {
@@ -67,6 +87,9 @@ const InventoryContainer = Vue.createApp({
     // ---------- Initial State ----------
     getInitialState() {
       return {
+        pendingWindowPointerEvent: null,
+        windowPointerFrame: 0,
+
         // Config
         maxWeight: 0,
         totalSlots: 0,
@@ -132,7 +155,28 @@ const InventoryContainer = Vue.createApp({
         dragStartY: 0,
         ghostElement: null,
         dragStartInventoryType: 'player',
-        transferAmount: null
+        transferAmount: null,
+
+        // Window layout
+        windowLayoutReady: false,
+        windowPosition: {
+          left: 0,
+          top: 0
+        },
+        windowSize: {
+          width: 0,
+          height: 0
+        },
+        windowInteraction: {
+          mode: null,
+          startX: 0,
+          startY: 0,
+          startLeft: 0,
+          startTop: 0,
+          startWidth: 0,
+          startHeight: 0,
+          direction: 'width'
+        }
       }
     },
 
@@ -192,6 +236,8 @@ const InventoryContainer = Vue.createApp({
         this.isShopInventory = this.otherInventoryName.startsWith('shop-')
         this.isOtherInventoryEmpty = false
       }
+
+      this.ensureInventoryWindowLayout()
     },
 
     updateInventory(data) {
@@ -222,6 +268,7 @@ const InventoryContainer = Vue.createApp({
     },
 
     async closeInventory() {
+      this.endWindowInteraction()
       this.clearDragData()
       let inventoryName = this.otherInventoryName
       Object.assign(this, this.getInitialState())
@@ -253,6 +300,287 @@ const InventoryContainer = Vue.createApp({
       if (event.button === 0 && this.showContextMenu) {
         this.showContextMenu = false
       }
+    },
+    getWindowStorageKey() {
+      return `qb-inventory:window-layout:${this.isOtherInventoryEmpty ? 'single' : 'split'}`
+    },
+    setWindowInteractionActive(active, cursorClass = 'grabbing') {
+      document.body.classList.toggle('window-interacting', !!active)
+      document.body.classList.remove('grabbing', 'resizing')
+      if (active && cursorClass) document.body.classList.add(cursorClass)
+    },
+    getWindowPadding() {
+      return 16
+    },
+    getWindowBaseWidth() {
+      return 620
+    },
+    getWindowBaseHeight() {
+      return this.isOtherInventoryEmpty ? 520 : 780
+    },
+    getWindowMinimumWidth() {
+      return 520
+    },
+    getWindowMinimumHeight() {
+      return this.isOtherInventoryEmpty ? 420 : 620
+    },
+    getPreferredSingleInventoryHeight(width = this.getWindowBaseWidth()) {
+      const widthScale = width / this.getWindowBaseWidth()
+      const clampedScale = Math.max(0.94, Math.min(widthScale, 1.16))
+      return Math.round(this.getWindowBaseHeight() * clampedScale)
+    },
+    loadWindowLayout() {
+      try {
+        const raw = localStorage.getItem(this.getWindowStorageKey())
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        if (
+          !parsed ||
+          typeof parsed.left !== 'number' ||
+          typeof parsed.top !== 'number' ||
+          typeof parsed.width !== 'number' ||
+          typeof parsed.height !== 'number'
+        ) {
+          return null
+        }
+        return parsed
+      } catch (error) {
+        return null
+      }
+    },
+    saveWindowLayout() {
+      if (!this.windowLayoutReady) return
+      try {
+        localStorage.setItem(
+          this.getWindowStorageKey(),
+          JSON.stringify({
+            left: this.windowPosition.left,
+            top: this.windowPosition.top,
+            width: this.windowSize.width,
+            height: this.windowSize.height
+          })
+        )
+      } catch (error) {
+        // no-op
+      }
+    },
+    clampWindowLayout(layout = {}) {
+      const padding = this.getWindowPadding()
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      const container = this.$refs.inventoryContainer
+      const measuredWidth =
+        layout.width ||
+        this.windowSize.width ||
+        Math.round(container?.offsetWidth || this.getWindowBaseWidth())
+      const measuredHeight = Math.round(
+        layout.height ||
+          this.windowSize.height ||
+          container?.offsetHeight ||
+          this.getWindowBaseHeight()
+      )
+      const minimumWidth = Math.min(
+        this.getWindowMinimumWidth(),
+        Math.max(360, viewportWidth - padding * 2)
+      )
+      const minimumHeight = Math.min(
+        this.getWindowMinimumHeight(),
+        Math.max(360, viewportHeight - padding * 2)
+      )
+      const maxWidth = Math.max(minimumWidth, viewportWidth - padding * 2)
+      const maxHeight = Math.max(minimumHeight, viewportHeight - padding * 2)
+      const width = Math.min(
+        Math.max(layout.width || measuredWidth, minimumWidth),
+        maxWidth
+      )
+      const desiredHeight = this.isOtherInventoryEmpty
+        ? this.getPreferredSingleInventoryHeight(width)
+        : layout.height || measuredHeight
+      const height = Math.min(
+        Math.max(desiredHeight, minimumHeight),
+        maxHeight
+      )
+      const maxLeft = Math.max(padding, viewportWidth - width - padding)
+      const maxTop = Math.max(padding, viewportHeight - height - padding)
+
+      let left = layout.left
+      let top = layout.top
+
+      if (typeof left !== 'number') {
+        left = Math.round((viewportWidth - width) / 2)
+      }
+      if (typeof top !== 'number') {
+        top = Math.round((viewportHeight - height) / 2)
+      }
+
+      left = Math.min(Math.max(left, padding), maxLeft)
+      top = Math.min(Math.max(top, padding), maxTop)
+
+      return {
+        left,
+        top,
+        width,
+        height
+      }
+    },
+    ensureInventoryWindowLayout() {
+      this.$nextTick(() => {
+        const container = this.$refs.inventoryContainer
+        if (!container) return
+
+        const measuredLayout = {
+          left: Math.round(container.getBoundingClientRect().left),
+          top: Math.round(container.getBoundingClientRect().top),
+          width: Math.round(container.offsetWidth),
+          height: Math.round(container.offsetHeight)
+        }
+        const storedLayout = this.loadWindowLayout()
+        const layout = this.clampWindowLayout(storedLayout || measuredLayout)
+
+        this.windowPosition.left = layout.left
+        this.windowPosition.top = layout.top
+        this.windowSize.width = layout.width
+        this.windowSize.height = layout.height
+        this.windowLayoutReady = true
+        this.saveWindowLayout()
+      })
+    },
+    beginWindowDrag(event) {
+      if (this.currentlyDraggingItem || event.button !== 0) return
+      const container = this.$refs.inventoryContainer
+      if (!container) return
+
+      this.windowInteraction = {
+        mode: 'drag',
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft:
+          this.windowPosition.left ||
+          Math.round(container.getBoundingClientRect().left),
+        startTop:
+          this.windowPosition.top ||
+          Math.round(container.getBoundingClientRect().top),
+        startWidth: this.windowSize.width || Math.round(container.offsetWidth),
+        startHeight: this.windowSize.height || Math.round(container.offsetHeight),
+        direction: 'width'
+      }
+      this.setWindowInteractionActive(true, 'grabbing')
+    },
+    beginWindowResize(event, direction = 'width') {
+      if (this.currentlyDraggingItem || event.button !== 0) return
+      const container = this.$refs.inventoryContainer
+      if (!container) return
+
+      const resolvedDirection =
+        direction === 'corner' && this.isOtherInventoryEmpty ? 'width' : direction
+
+      this.windowInteraction = {
+        mode: 'resize',
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft:
+          this.windowPosition.left ||
+          Math.round(container.getBoundingClientRect().left),
+        startTop:
+          this.windowPosition.top ||
+          Math.round(container.getBoundingClientRect().top),
+        startWidth: this.windowSize.width || Math.round(container.offsetWidth),
+        startHeight: this.windowSize.height || Math.round(container.offsetHeight),
+        direction: resolvedDirection
+      }
+      this.setWindowInteractionActive(true, resolvedDirection === 'corner' ? 'resizing' : 'grabbing')
+    },
+    handleWindowPointerMove(event) {
+      if (!this.windowInteraction.mode) return
+      this.pendingWindowPointerEvent = {
+        clientX: event.clientX,
+        clientY: event.clientY
+      }
+
+      if (this.windowPointerFrame) return
+
+      this.windowPointerFrame = requestAnimationFrame(() => {
+        this.windowPointerFrame = 0
+        if (!this.windowInteraction.mode || !this.pendingWindowPointerEvent) return
+
+        const pointerEvent = this.pendingWindowPointerEvent
+        const container = this.$refs.inventoryContainer
+        const containerHeight = Math.round(container?.offsetHeight || 0)
+
+        if (this.windowInteraction.mode === 'drag') {
+          const nextLayout = this.clampWindowLayout({
+            left:
+              this.windowInteraction.startLeft +
+              (pointerEvent.clientX - this.windowInteraction.startX),
+            top:
+              this.windowInteraction.startTop +
+              (pointerEvent.clientY - this.windowInteraction.startY),
+            width: this.windowSize.width || this.windowInteraction.startWidth,
+            height: containerHeight
+          })
+          this.windowPosition.left = nextLayout.left
+          this.windowPosition.top = nextLayout.top
+          return
+        }
+
+        if (this.windowInteraction.mode === 'resize') {
+          const resizeWidth =
+            this.windowInteraction.startWidth +
+            (pointerEvent.clientX - this.windowInteraction.startX)
+          const resizeHeight =
+            this.windowInteraction.startHeight +
+            (pointerEvent.clientY - this.windowInteraction.startY)
+
+          const nextLayout = this.clampWindowLayout({
+            left: this.windowPosition.left,
+            top: this.windowPosition.top,
+            width: resizeWidth,
+            height:
+              this.windowInteraction.direction === 'corner'
+                ? resizeHeight
+                : this.windowSize.height || containerHeight
+          })
+          this.windowSize.width = nextLayout.width
+          this.windowSize.height = nextLayout.height
+          this.windowPosition.left = nextLayout.left
+          this.windowPosition.top = nextLayout.top
+        }
+      })
+    },
+    endWindowInteraction() {
+      if (!this.windowInteraction.mode) return
+      this.windowInteraction = {
+        mode: null,
+        startX: 0,
+        startY: 0,
+        startLeft: 0,
+        startTop: 0,
+        startWidth: 0,
+        startHeight: 0,
+        direction: 'width'
+      }
+      this.pendingWindowPointerEvent = null
+      if (this.windowPointerFrame) {
+        cancelAnimationFrame(this.windowPointerFrame)
+        this.windowPointerFrame = 0
+      }
+      this.setWindowInteractionActive(false)
+      this.saveWindowLayout()
+    },
+    handleViewportResize() {
+      if (!this.isInventoryOpen || !this.windowLayoutReady) return
+      const container = this.$refs.inventoryContainer
+      const layout = this.clampWindowLayout({
+        left: this.windowPosition.left,
+        top: this.windowPosition.top,
+        width: this.windowSize.width,
+        height: this.windowSize.height || Math.round(container?.offsetHeight || 0)
+      })
+      this.windowPosition.left = layout.left
+      this.windowPosition.top = layout.top
+      this.windowSize.width = layout.width
+      this.windowSize.height = layout.height
+      this.saveWindowLayout()
     },
 
     // ---------- Mouse handlers ----------
@@ -383,7 +711,7 @@ const InventoryContainer = Vue.createApp({
       this.dragStartY = event.clientY
       this.dragStartInventoryType = inventoryType
       this.showContextMenu = false
-      document.body.classList.add('grabbing')
+      this.setWindowInteractionActive(true, 'grabbing')
       window.addEventListener('mousemove', this.drag)
       window.addEventListener('mouseup', this.endDrag)
     },
@@ -406,7 +734,10 @@ const InventoryContainer = Vue.createApp({
       this.ghostElement.style.top = `${centeredY}px`
     },
     endDrag(event) {
-      if (!this.currentlyDraggingItem) return
+      if (!this.currentlyDraggingItem) {
+        this.endWindowInteraction()
+        return
+      }
       const targetPlayerItemSlotElement = event.target.closest(
         '.player-inventory .item-slot'
       )
@@ -1228,6 +1559,10 @@ const InventoryContainer = Vue.createApp({
     }
   },
   mounted() {
+    window.addEventListener('mousemove', this.handleWindowPointerMove)
+    window.addEventListener('mouseup', this.endWindowInteraction)
+    window.addEventListener('resize', this.handleViewportResize)
+
     window.addEventListener('keydown', (event) => {
       const key = event.key
       if (key === 'Escape') {
@@ -1281,9 +1616,17 @@ const InventoryContainer = Vue.createApp({
   },
 
   beforeUnmount() {
-    window.removeEventListener('mousemove', () => {})
-    window.removeEventListener('keydown', () => {})
-    window.removeEventListener('message', () => {})
+    window.removeEventListener('mousemove', this.handleWindowPointerMove)
+    window.removeEventListener('mouseup', this.endWindowInteraction)
+    if (this.windowPointerFrame) {
+      cancelAnimationFrame(this.windowPointerFrame)
+      this.windowPointerFrame = 0
+    }
+    this.pendingWindowPointerEvent = null
+    this.setWindowInteractionActive(false)
+    window.removeEventListener('resize', this.handleViewportResize)
+    window.removeEventListener('mousemove', this.drag)
+    window.removeEventListener('mouseup', this.endDrag)
   }
 })
 

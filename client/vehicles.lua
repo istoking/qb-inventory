@@ -4,7 +4,10 @@ local function IsBackEngine(vehModel)
     return BackEngineVehicles[vehModel]
 end
 
+local CurrentTrunkVehicle = 0
+
 local function OpenTrunk(vehicle)
+    CurrentTrunkVehicle = vehicle
     LoadAnimDict('amb@prop_human_bum_bin@idle_b')
     TaskPlayAnim(PlayerPedId(), 'amb@prop_human_bum_bin@idle_b', 'idle_d', 4.0, 4.0, -1, 50, 0, false, false, false)
     if IsBackEngine(GetEntityModel(vehicle)) then
@@ -15,15 +18,40 @@ local function OpenTrunk(vehicle)
 end
 
 function CloseTrunk()
-    local vehicle, distance = QBCore.Functions.GetClosestVehicle()
-    if vehicle == 0 or distance > 5 then return end
-    LoadAnimDict('amb@prop_human_bum_bin@idle_b')
-    TaskPlayAnim(PlayerPedId(), 'amb@prop_human_bum_bin@idle_b', 'exit', 4.0, 4.0, -1, 50, 0, false, false, false)
-    if IsBackEngine(GetEntityModel(vehicle)) then
-        SetVehicleDoorShut(vehicle, 4, false)
-    else
-        SetVehicleDoorShut(vehicle, 5, false)
+    local ped = PlayerPedId()
+    local vehicle = CurrentTrunkVehicle
+
+    if vehicle == 0 or not DoesEntityExist(vehicle) then
+        local closestVehicle, distance = QBCore.Functions.GetClosestVehicle()
+        if closestVehicle ~= 0 and distance <= 5 then
+            vehicle = closestVehicle
+        else
+            vehicle = 0
+        end
     end
+
+    LoadAnimDict('amb@prop_human_bum_bin@idle_b')
+
+    if vehicle ~= 0 then
+        TaskPlayAnim(ped, 'amb@prop_human_bum_bin@idle_b', 'exit', 4.0, 4.0, 650, 50, 0, false, false, false)
+        if IsBackEngine(GetEntityModel(vehicle)) then
+            SetVehicleDoorShut(vehicle, 4, false)
+        else
+            SetVehicleDoorShut(vehicle, 5, false)
+        end
+    end
+
+    CreateThread(function()
+        Wait(700)
+        StopAnimTask(ped, 'amb@prop_human_bum_bin@idle_b', 'idle_d', 1.0)
+        StopAnimTask(ped, 'amb@prop_human_bum_bin@idle_b', 'exit', 1.0)
+        ClearPedSecondaryTask(ped)
+        if not IsPedRagdoll(ped) then
+            ClearPedTasks(ped)
+        end
+    end)
+
+    CurrentTrunkVehicle = 0
 end
 
 -- Callbacks

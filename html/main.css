@@ -42,11 +42,63 @@ body.grabbing * {
   left: clamp(24px, 12vw, 420px);
   top: 50%;
   transform: translateY(-50%);
+  width: min(620px, calc(100vw - 32px));
   background-color: var(--color-background);
   border-radius: 10px;
   box-shadow: 0 4px 10px rgba(255, 255, 255, 0.2);
   padding: 15px;
   overflow: visible;
+}
+
+.inventory-drag-handle,
+.inventory-resize-handle {
+  position: absolute;
+  top: 50%;
+  width: 22px;
+  height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  background: linear-gradient(
+    180deg,
+    var(--color-context-menu),
+    var(--color-secondary-background)
+  );
+  color: var(--color-text);
+  cursor: grab;
+  z-index: 20;
+  opacity: 0.92;
+  transition: transform 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+}
+
+.inventory-drag-handle:hover,
+.inventory-resize-handle:hover {
+  border-color: var(--color-accent);
+  opacity: 1;
+}
+
+.inventory-drag-handle:active,
+.inventory-resize-handle:active {
+  cursor: grabbing;
+}
+
+.inventory-drag-handle {
+  left: -12px;
+  border-radius: 10px 0 0 10px;
+  transform: translateY(-50%);
+}
+
+.inventory-resize-handle {
+  right: -12px;
+  border-radius: 0 10px 10px 0;
+  transform: translateY(-50%);
+}
+
+.inventory-drag-handle i,
+.inventory-resize-handle i {
+  pointer-events: none;
+  font-size: 12px;
 }
 
 .player-inventory,
@@ -786,3 +838,188 @@ body.grabbing * {
     transform: translate(-50%, -50%);
   }
 }
+
+
+/* Window movement / resize */
+:root {
+  --inventory-scale: 1;
+}
+
+body.resizing,
+body.resizing * {
+  cursor: nwse-resize !important;
+}
+
+.inventory-container {
+  min-width: 360px;
+  min-height: 360px;
+  box-sizing: border-box;
+  border-radius: calc(10px * var(--inventory-scale));
+  padding: calc(15px * var(--inventory-scale));
+}
+
+.inventory-drag-handle,
+.inventory-resize-handle,
+.inventory-resize-corner {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  background: linear-gradient(
+    180deg,
+    var(--color-context-menu),
+    var(--color-secondary-background)
+  );
+  color: var(--color-text);
+  z-index: 20;
+  opacity: 0.94;
+  transition: transform 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+}
+
+.inventory-drag-handle,
+.inventory-resize-handle {
+  top: 50%;
+  width: calc(22px * var(--inventory-scale));
+  height: calc(74px * var(--inventory-scale));
+}
+
+.inventory-drag-handle {
+  left: calc(-12px * var(--inventory-scale));
+  border-radius: calc(10px * var(--inventory-scale)) 0 0 calc(10px * var(--inventory-scale));
+  transform: translateY(-50%);
+  cursor: grab;
+}
+
+.inventory-resize-handle {
+  right: calc(-12px * var(--inventory-scale));
+  border-radius: 0 calc(10px * var(--inventory-scale)) calc(10px * var(--inventory-scale)) 0;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.inventory-resize-corner {
+  right: calc(-10px * var(--inventory-scale));
+  bottom: calc(-10px * var(--inventory-scale));
+  width: calc(28px * var(--inventory-scale));
+  height: calc(28px * var(--inventory-scale));
+  border-radius: 0 0 calc(10px * var(--inventory-scale)) 0;
+  cursor: nwse-resize;
+}
+
+.inventory-drag-handle:hover,
+.inventory-resize-handle:hover,
+.inventory-resize-corner:hover {
+  border-color: var(--color-accent);
+  opacity: 1;
+}
+
+.inventory-drag-handle i,
+.inventory-resize-handle i,
+.inventory-resize-corner i {
+  pointer-events: none;
+  font-size: calc(12px * var(--inventory-scale));
+}
+
+.inventory-container .player-inventory,
+.inventory-container .other-inventory {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+  padding: calc(10px * var(--inventory-scale));
+  margin-bottom: calc(15px * var(--inventory-scale));
+}
+
+.inventory-container .player-inventory .item-grid,
+.inventory-container .other-inventory .item-grid {
+  gap: calc(5px * var(--inventory-scale));
+}
+
+.inventory-container .item-grid {
+  gap: calc(2px * var(--inventory-scale));
+}
+
+.inventory-container .item-slot {
+  width: calc(100px * var(--inventory-scale));
+  height: calc(100px * var(--inventory-scale));
+  border-radius: calc(8px * var(--inventory-scale));
+}
+
+.inventory-container .item-info-container {
+  height: calc(20px * var(--inventory-scale));
+}
+
+.inventory-container .item-slot-key,
+.inventory-container .item-slot-amount {
+  font-size: calc(12px * var(--inventory-scale));
+  border-radius: calc(3px * var(--inventory-scale));
+  padding: calc(3px * var(--inventory-scale)) calc(5px * var(--inventory-scale));
+}
+
+.inventory-container .inventory-label p {
+  font-size: calc(14px * var(--inventory-scale));
+}
+
+.inventory-container .current-weight p,
+.inventory-container .item-price {
+  font-size: calc(12px * var(--inventory-scale));
+}
+
+.inventory-container .weight-bar {
+  height: calc(8px * var(--inventory-scale));
+  border-radius: calc(5px * var(--inventory-scale));
+  margin-top: calc(5px * var(--inventory-scale));
+}
+
+.inventory-container .item-slot-durability,
+.inventory-container .item-slot-durability-fill {
+  border-radius: calc(2px * var(--inventory-scale));
+}
+
+.inventory-container .input-wrapper {
+  gap: calc(8px * var(--inventory-scale));
+}
+
+.inventory-container .transfer-amount,
+.inventory-container .clear-button {
+  min-height: calc(38px * var(--inventory-scale));
+  font-size: calc(14px * var(--inventory-scale));
+}
+
+.inventory-container .context-menu {
+  width: calc(240px * var(--inventory-scale));
+  border-radius: calc(10px * var(--inventory-scale));
+  font-size: calc(15px * var(--inventory-scale));
+}
+
+.inventory-container .context-menu li {
+  padding: calc(12px * var(--inventory-scale)) calc(16px * var(--inventory-scale));
+}
+
+
+body.window-interacting,
+body.window-interacting * {
+  user-select: none !important;
+}
+
+body.window-interacting .item-slot,
+body.window-interacting .inventory-container,
+body.window-interacting .inventory-drag-handle,
+body.window-interacting .inventory-resize-corner {
+  transition: none !important;
+}
+
+.inventory-container {
+  will-change: left, top, width, height;
+}
+
+.inventory-container .item-grid {
+  justify-content: flex-start;
+}
+
+.inventory-container .item-slot {
+  flex: 0 0 calc(100px * var(--inventory-scale));
+}
+
+.inventory-resize-handle { display: none !important; }

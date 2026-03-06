@@ -1,23 +1,7 @@
 QBCore = exports['qb-core']:GetCoreObject()
-Inventories = {}
-Drops = {}
-RegisteredShops = {}
-
-CreateThread(function()
-    MySQL.query('SELECT * FROM inventories', {}, function(result)
-        if result and #result > 0 then
-            for i = 1, #result do
-                local inventory = result[i]
-                local cacheKey = inventory.identifier
-                Inventories[cacheKey] = {
-                    items = json.decode(inventory.items) or {},
-                    isOpen = false
-                }
-            end
-            print(#result .. ' inventories successfully loaded')
-        end
-    end)
-end)
+Inventories = Inventories or {}
+Drops = Drops or {}
+RegisteredShops = RegisteredShops or {}
 
 CreateThread(function()
     while true do
@@ -40,9 +24,12 @@ end)
 -- Handlers
 
 AddEventHandler('playerDropped', function()
-    for _, inv in pairs(Inventories) do
+    for identifier, inv in pairs(Inventories) do
         if inv.isOpen == source then
             inv.isOpen = false
+            if type(identifier) == 'string' and inv.dirty then
+                FlushInventoryNow(identifier, true)
+            end
         end
     end
     for _, drop in pairs(Drops) do
@@ -53,9 +40,20 @@ AddEventHandler('playerDropped', function()
 end)
 
 AddEventHandler('txAdmin:events:serverShuttingDown', function()
-    for inventory, data in pairs(Inventories) do
-        if data.isOpen then
-            MySQL.prepare('INSERT INTO inventories (identifier, items) VALUES (?, ?) ON DUPLICATE KEY UPDATE items = ?', { inventory, json.encode(data.items), json.encode(data.items) })
+    FlushDirtyInventories(true, 5000)
+    for inventory in pairs(Inventories) do
+        if type(inventory) == 'string' then
+            FlushInventoryNow(inventory, true)
+        end
+    end
+end)
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    FlushDirtyInventories(true, 5000)
+    for inventory in pairs(Inventories) do
+        if type(inventory) == 'string' then
+            FlushInventoryNow(inventory, true)
         end
     end
 end)
@@ -180,7 +178,6 @@ end
 -- Events
 
 RegisterNetEvent('qb-inventory:server:openVending', function(data)
-    local src = source
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
     CreateShop({
@@ -215,9 +212,12 @@ RegisterNetEvent('qb-inventory:server:closeInventory', function(inventory)
         end
         return
     end
-    if not Inventories[inventory] then return end
-    Inventories[inventory].isOpen = false
-    MySQL.prepare('INSERT INTO inventories (identifier, items) VALUES (?, ?) ON DUPLICATE KEY UPDATE items = ?', { inventory, json.encode(Inventories[inventory].items), json.encode(Inventories[inventory].items) })
+    local inv = EnsureInventoryLoaded(inventory)
+    if not inv then return end
+    inv.isOpen = false
+    if (Config.InventoryPerformance and Config.InventoryPerformance.Save and Config.InventoryPerformance.Save.flushOnClose ~= false) then
+        FlushInventoryNow(inventory, true)
+    end
     if Backpacks and Backpacks.IsBackpackStash and Backpacks.IsBackpackStash(inventory) then
         Backpacks.OnClose(src, inventory)
     end
@@ -289,6 +289,7 @@ end)
 
 RegisterNetEvent('qb-inventory:server:openDrop', function(dropId)
     local src = source
+    if CheckInventoryRateLimit(src, 'openDrop') then return end
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
     local playerPed = GetPlayerPed(src)
@@ -329,6 +330,10 @@ end)
 
 QBCore.Functions.CreateCallback('qb-inventory:server:createDrop', function(source, cb, item)
     local src = source
+    if CheckInventoryRateLimit(src, 'createDrop') then
+        cb(false)
+        return
+    end
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then
         cb(false)
@@ -336,6 +341,12 @@ QBCore.Functions.CreateCallback('qb-inventory:server:createDrop', function(sourc
     end
     local playerPed = GetPlayerPed(src)
     local playerCoords = GetEntityCoords(playerPed)
+    if item and item.name and not CanStoreRestrictedItemInInventory(item.name, 'drop-temp') then
+        TriggerClientEvent('QBCore:Notify', src, 'You cannot drop that item.', 'error')
+        InventoryLogBlockedAction('Blocked Drop', ('**Player:** %s (%s)\n**Item:** %s'):format(GetPlayerName(src) or 'Unknown', src, item.name))
+        cb(false)
+        return
+    end
     if RemoveItem(src, item.name, item.amount, item.fromSlot, 'dropped item') then
         if item.type == 'weapon' then checkWeapon(src, item) end
         TaskPlayAnim(playerPed, 'pickup_object', 'pickup_low', 8.0, -8.0, 2000, 0, 0, false, false, false)
@@ -372,6 +383,7 @@ QBCore.Functions.CreateCallback('qb-inventory:server:createDrop', function(sourc
 end)
 
 QBCore.Functions.CreateCallback('qb-inventory:server:attemptPurchase', function(source, cb, data)
+    if CheckInventoryRateLimit(source, 'purchase') then cb(false) return end
     local itemInfo = data.item
     local amount = data.amount
     local shop = string.gsub(data.shop, 'shop%-', '')
@@ -431,6 +443,7 @@ QBCore.Functions.CreateCallback('qb-inventory:server:attemptPurchase', function(
 end)
 
 QBCore.Functions.CreateCallback('qb-inventory:server:giveItem', function(source, cb, target, item, amount, slot, info)
+    if CheckInventoryRateLimit(source, 'giveItem') then cb(false) return end
     local player = QBCore.Functions.GetPlayer(source)
     if not player or player.PlayerData.metadata['isdead'] or player.PlayerData.metadata['inlaststand'] or player.PlayerData.metadata['ishandcuffed'] then
         cb(false)
@@ -476,6 +489,13 @@ QBCore.Functions.CreateCallback('qb-inventory:server:giveItem', function(source,
         return
     end
 
+    if not CanStoreRestrictedItemInInventory(item, 'otherplayer-' .. tostring(target)) then
+        TriggerClientEvent('QBCore:Notify', source, 'You cannot give that item that way.', 'error')
+        InventoryLogBlockedAction('Blocked Give Item', ('**Player:** %s (%s)\n**Target:** %s\n**Item:** %s'):format(GetPlayerName(source) or 'Unknown', source, target, item))
+        cb(false)
+        return
+    end
+
     local removeItem = RemoveItem(source, item, giveAmount, slot, 'Item given to ID #' .. target)
     if not removeItem then
         cb(false)
@@ -517,8 +537,9 @@ local function getItem(inventoryId, src, slot)
             items = Drops[inventoryId]['items']
         end
     else
-        if Inventories[inventoryId] and Inventories[inventoryId]['items'] then
-            items = Inventories[inventoryId]['items']
+        local inv = EnsureInventoryLoaded(inventoryId)
+        if inv and inv.items then
+            items = inv.items
         end
     end
 
@@ -568,8 +589,9 @@ end
 
 RegisterNetEvent('qb-inventory:server:SetInventoryData', function(fromInventory, toInventory, fromSlot, toSlot, fromAmount, toAmount)
     if toInventory:find('shop%-') then return end
-    if not fromInventory or not toInventory or not fromSlot or not toSlot or not fromAmount or not toAmount or fromAmount < 0 or toAmount < 0 then return end
     local src = source
+    if CheckInventoryRateLimit(src, 'moveItem') then return end
+    if not fromInventory or not toInventory or not fromSlot or not toSlot or not fromAmount or not toAmount or fromAmount < 0 or toAmount < 0 then return end
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
 
@@ -577,6 +599,12 @@ RegisterNetEvent('qb-inventory:server:SetInventoryData', function(fromInventory,
 
     local fromItem = getItem(fromInventory, src, fromSlot)
     local toItem = getItem(toInventory, src, toSlot)
+
+    if fromItem and not CanStoreRestrictedItemInInventory(fromItem.name, toInventory) then
+        TriggerClientEvent('QBCore:Notify', src, 'You cannot store that item there.', 'error')
+        InventoryLogBlockedAction('Blocked Inventory Move', ('**Player:** %s (%s)\n**Item:** %s\n**From:** %s\n**To:** %s'):format(GetPlayerName(src) or 'Unknown', src, fromItem.name, fromInventory, toInventory))
+        return
+    end
 
     -- Backpack stash validation (merged backpacks)
     if Backpacks and Backpacks.IsBackpackStash and Backpacks.IsBackpackStash(toInventory) and fromInventory ~= toInventory and fromItem then

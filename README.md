@@ -1,22 +1,51 @@
 # qb-inventory
-
-Customized `qb-inventory` for QBCore, with a redesigned inventory UI, backpack support, currency storage guardrails, and ongoing cleanup for stale vehicle and drop inventories.
+# Customized `qb-inventory` for QBCore, with a redesigned inventory UI, backpack support, currency storage guardrails, inventory window move/resize support, and ongoing cleanup for stale vehicle and drop inventories.
 
 ## Dependencies
 - [qb-core](https://github.com/qbcore-framework/qb-core)
-- [qb-smallresources](https://github.com/qbcore-framework/qb-smallresources) - logging / history support
-- [oxmysql](https://github.com/overextended/oxmysql)
+- [qb-smallresources](https://github.com/qbcore-framework/qb-smallresources) - for transfer logging and related history
+
+## Features
+- Stashes (personal and/or shared)
+- Vehicle trunk & glovebox
+- Weapon attachments
+- Shops
+- Item drops
+- Backpack inventories
+- Movable and resizable inventory window
+
+## Documentation
+https://docs.qbcore.org/qbcore-documentation/qbcore-resources/qb-inventory
 
 ## What is included in this version
 
 ### Inventory redesign
-This build includes a redesigned inventory UI and layout pass compared to standard `qb-inventory`.
+This version includes a full visual pass over the standard `qb-inventory` layout.
 
-Highlights:
-- refreshed inventory presentation
-- improved overall layout flow
-- updated visual structure for a cleaner day-to-day use
-- support for the newer inventory/backpack handling used in this version
+What changed:
+- cleaner overall layout and presentation
+- updated spacing and structure for everyday use
+- improved visual flow across the main inventory view
+- support for the newer inventory and backpack handling used in this build
+
+The goal with the redesign was simple: keep the inventory familiar, but make it feel cleaner, easier to read, and better to use for long sessions.
+
+### Movable and resizable inventory window
+The inventory window can now be repositioned and resized in a way that feels more natural in use.
+
+What it does:
+- adds a visible handle on the left side of the inventory for moving the window
+- adds a resize grip in the bottom-right corner for resizing
+- keeps the inventory inside screen boundaries so it cannot be dragged off-screen
+- remembers the player’s saved position and size between uses
+- automatically clamps saved values if the player changes resolution
+
+Behavior notes:
+- single-panel inventory keeps a fitted height so it does not stretch into empty space
+- split inventory can make proper use of the extra room when another inventory is open
+- the move/resize controls are separate from normal item drag and drop so they do not interfere with standard inventory use
+
+This was added to make the inventory easier to place on different screen sizes and setups without making the UI feel cluttered.
 
 ### Backpack support
 Backpacks are built into this resource through dedicated config and server handling.
@@ -41,7 +70,7 @@ Default backpack items configured here:
 If you want to add more backpacks, follow the same structure already used in `config/backpacks.lua`.
 
 ### Currency storage guardrails
-This build includes guardrails for currency items so you can control where physical money can be moved.
+This version includes guardrails for currency items so you can control where physical money can be moved.
 
 File:
 - `config/guardrails.lua`
@@ -98,6 +127,21 @@ What this version does:
 - expires drops after the configured time
 - gradually purges persisted `drop-*` inventories from the database
 - avoids unnecessary long-term buildup from old drop entries
+
+### Production tuning
+This build also includes backend tuning aimed at keeping the inventory healthier on larger servers and long uptimes.
+
+What changed:
+- removed the full startup preload of the `inventories` table
+- switched persisted inventory types to lazy loading instead of loading everything into memory at resource start
+- added dirty-state tracking so non-player inventories are only saved when needed
+- added batched background flushes for changed inventories
+- flushes dirty inventories on close, resource stop, and txAdmin shutdown
+- evicts idle cached inventories so memory use does not grow forever during long runs
+- adds lightweight rate limiting around common inventory actions to reduce spam and abuse pressure
+- cuts down routine production logging to avoid unnecessary console and disk noise
+
+In plain terms, the inventory now does a better job of loading only what it needs, saving more intelligently, and not carrying around stale data forever.
 
 ## Configuration
 
@@ -169,6 +213,23 @@ That cleanup is intended to remove orphaned `trunk-*` and `glovebox-*` records t
 - Currency guardrails only apply to the configured item names.
 - Vehicle orphan cleanup is designed to protect owned vehicles by checking against `player_vehicles`.
 - Drop cleanup is staggered to avoid heavy database spikes.
+- Saved inventory window position and size are stored client-side.
+- Production tuning changes are aimed at reducing unnecessary memory use and database load, especially on larger servers.
+
+
+## Inventory window reposition and resize
+This build also includes client-side inventory window movement and resizing improvements for a cleaner and more flexible UI experience.
+
+What changed:
+- added a dedicated left-side drag handle for repositioning the inventory window
+- added bottom-right corner resizing for inventory window scaling
+- stores the player's inventory window position and size client-side so it persists between openings
+- keeps movement and resizing clamped within screen bounds so the inventory cannot be dragged off-screen
+- smooth drag and resize updates
+- improves slot/grid reflow so cells compact and expand more cleanly during resize
+- reduces awkward empty space behavior in single inventory view by keeping the layout better constrained
+- keeps dual inventory support working while relying on the reposition handle plus the bottom-right resize handle
+
 
 ## License
 

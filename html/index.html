@@ -24,11 +24,29 @@
     <div id="app">
       <div
         class="inventory-container"
+        ref="inventoryContainer"
         v-if="isInventoryOpen"
+        :style="inventoryContainerStyle"
         @mousemove="drag"
         @mouseup="endDrag"
         @mousedown="containerMouseDownAction"
       >
+        <button
+          type="button"
+          class="inventory-drag-handle"
+          title="Drag inventory"
+          @mousedown.stop.prevent="beginWindowDrag"
+        >
+          <i class="fas fa-grip-lines"></i>
+        </button>
+                <button
+          type="button"
+          class="inventory-resize-corner"
+          title="Resize inventory"
+          @mousedown.stop.prevent="beginWindowResize($event, 'corner')"
+        >
+          <i class="fas fa-up-right-and-down-left-from-center"></i>
+        </button>
         <div
           class="player-inventory-header"
           :class="{ 'centered-inventory-header': shouldCenterInventory }"
