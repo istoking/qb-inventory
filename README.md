@@ -230,20 +230,6 @@ That cleanup is intended to remove orphaned `trunk-*` and `glovebox-*` records t
 - Saved inventory window position and size are stored client-side.
 - Production tuning changes are aimed at reducing unnecessary memory use and database load, especially on larger servers.
 
-
-## Inventory window reposition and resize
-This build also includes client-side inventory window movement and resizing improvements for a cleaner and more flexible UI experience.
-
-What changed:
-- added a dedicated left-side drag handle for repositioning the inventory window
-- added bottom-right corner resizing for inventory window scaling
-- stores the player's inventory window position and size client-side so it persists between openings
-- keeps movement and resizing clamped within screen bounds so the inventory cannot be dragged off-screen
-- smooth drag and resize updates
-- improves slot/grid reflow so cells compact and expand more cleanly during resize
-- reduces awkward empty space behavior in single inventory view by keeping the layout better constrained
-- keeps dual inventory support working while relying on the reposition handle plus the bottom-right resize handle
-
 ## License
 
     QBCore Framework
