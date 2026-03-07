@@ -19,6 +19,20 @@ https://docs.qbcore.org/qbcore-documentation/qbcore-resources/qb-inventory
 
 ## What is included in this version
 
+## Screenshots
+
+### Main Inventory
+![Main Inventory](screenshots/main-inventory.jpg)
+
+### Glovebox
+![Glovebox](screenshots/glovebox.jpg)
+
+### Trunk
+![Trunk](screenshots/trunk.jpg)
+
+### With Item Box
+![With Item Box](screenshots/with-itembox.jpg)
+
 ### Inventory redesign
 This version includes a full visual pass over the standard `qb-inventory` layout.
 
@@ -229,7 +243,6 @@ What changed:
 - improves slot/grid reflow so cells compact and expand more cleanly during resize
 - reduces awkward empty space behavior in single inventory view by keeping the layout better constrained
 - keeps dual inventory support working while relying on the reposition handle plus the bottom-right resize handle
-
 
 ## License
 
