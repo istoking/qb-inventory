@@ -3,6 +3,12 @@ Inventories = Inventories or {}
 Drops = Drops or {}
 RegisteredShops = RegisteredShops or {}
 
+local function InvDebug(kind, msg)
+    if Config and Config.Debug and Config.Debug.Enabled and Config.Debug[kind] then
+        print(('^3[qb-inventory:%s]^0 %s'):format(string.lower(kind), msg))
+    end
+end
+
 CreateThread(function()
     while true do
         for k, v in pairs(Drops) do
@@ -178,6 +184,7 @@ end
 -- Events
 
 RegisterNetEvent('qb-inventory:server:openVending', function(data)
+    local src = source
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
     CreateShop({
@@ -203,7 +210,9 @@ RegisterNetEvent('qb-inventory:server:closeInventory', function(inventory)
     end
     if Drops[inventory] then
         Drops[inventory].isOpen = false
-        if #Drops[inventory].items == 0 and not Drops[inventory].isOpen then -- if no listeed items in the drop on close
+        local itemCount = 0
+        for _ in pairs(Drops[inventory].items or {}) do itemCount = itemCount + 1 end
+        if itemCount == 0 and not Drops[inventory].isOpen then
             TriggerClientEvent('qb-inventory:client:removeDropTarget', -1, Drops[inventory].entityId)
             Wait(500)
             local entity = NetworkGetEntityFromNetworkId(Drops[inventory].entityId)
@@ -215,72 +224,43 @@ RegisterNetEvent('qb-inventory:server:closeInventory', function(inventory)
     local inv = EnsureInventoryLoaded(inventory)
     if not inv then return end
     inv.isOpen = false
-    if (Config.InventoryPerformance and Config.InventoryPerformance.Save and Config.InventoryPerformance.Save.flushOnClose ~= false) then
-        FlushInventoryNow(inventory, true)
-    end
     if Backpacks and Backpacks.IsBackpackStash and Backpacks.IsBackpackStash(inventory) then
         Backpacks.OnClose(src, inventory)
     end
+    if (Config.InventoryPerformance and Config.InventoryPerformance.Save and Config.InventoryPerformance.Save.flushOnClose ~= false) then
+        FlushInventoryNow(inventory, true)
+    end
 end)
+
 
 RegisterNetEvent('qb-inventory:server:useItem', function(item)
     local src = source
-    -- This event is primarily triggered from clients, but can be called server-side.
-    -- If it is ever triggered without a valid source, bail to avoid native errors.
     if not src then return end
     local itemData = GetItemBySlot(src, item.slot)
     if not itemData then return end
-    local itemInfo = QBCore.Shared.Items[itemData.name]
+    local itemName = itemData.name and itemData.name:lower() or ''
+    local itemInfo = QBCore.Shared.Items[itemName]
+
+    if Backpacks and Backpacks.Open and itemName ~= '' and Config.Backpacks and Config.Backpacks.Definitions then
+        for _, def in ipairs(Config.Backpacks.Definitions) do
+            if def and def.item and def.item:lower() == itemName then
+                local ok = Backpacks.Open(src, itemData)
+                InvDebug('Backpacks', ('useItem open result src=%s item=%s ok=%s'):format(src, itemName, tostring(ok)))
+                TriggerClientEvent('qb-inventory:client:ItemBox', src, itemInfo or { name = itemName, label = itemName }, 'use')
+                return
+            end
+        end
+    end
+
     if itemData.type == 'weapon' then
         TriggerClientEvent('qb-weapons:client:UseWeapon', src, itemData, itemData.info.quality and itemData.info.quality > 0)
         TriggerClientEvent('qb-inventory:client:ItemBox', src, itemInfo, 'use')
     elseif itemData.name == 'id_card' then
         UseItem(itemData.name, src, itemData)
         TriggerClientEvent('qb-inventory:client:ItemBox', src, itemInfo, 'use')
-        local playerPed = GetPlayerPed(src)
-        local playerCoords = GetEntityCoords(playerPed)
-        local players = QBCore.Functions.GetPlayers()
-        local gender = (itemData.info and itemData.info.gender == 0) and 'Male' or 'Female'
-        for _, v in pairs(players) do
-            local targetPed = GetPlayerPed(v)
-            local dist = #(playerCoords - GetEntityCoords(targetPed))
-            if dist < 3.0 then
-                --[[TriggerClientEvent('chat:addMessage', v, {
-                    template = '<div class="chat-message advert" style="background: linear-gradient(to right, rgba(5, 5, 5, 0.6), #74807c); display: flex;"><div style="margin-right: 10px;"><i class="far fa-id-card" style="height: 100%;"></i><strong> {0}</strong><br> <strong>Civ ID:</strong> {1} <br><strong>First Name:</strong> {2} <br><strong>Last Name:</strong> {3} <br><strong>Birthdate:</strong> {4} <br><strong>Gender:</strong> {5} <br><strong>Nationality:</strong> {6}</div></div>',
-                    args = {
-                        'ID Card',
-                        item.info.citizenid,
-                        item.info.firstname,
-                        item.info.lastname,
-                        item.info.birthdate,
-                        gender,
-                        item.info.nationality
-                    }
-                })--]]
-            end
-        end
     elseif itemData.name == 'driver_license' then
         UseItem(itemData.name, src, itemData)
         TriggerClientEvent('qb-inventory:client:ItemBox', src, itemInfo, 'use')
-        local playerPed = GetPlayerPed(src)
-        local playerCoords = GetEntityCoords(playerPed)
-        local players = QBCore.Functions.GetPlayers()
-        for _, v in pairs(players) do
-            local targetPed = GetPlayerPed(v)
-            local dist = #(playerCoords - GetEntityCoords(targetPed))
-            if dist < 3.0 then
-                --[[TriggerClientEvent('chat:addMessage', v, {
-                    template = '<div class="chat-message advert" style="background: linear-gradient(to right, rgba(5, 5, 5, 0.6), #657175); display: flex;"><div style="margin-right: 10px;"><i class="far fa-id-card" style="height: 100%;"></i><strong> {0}</strong><br> <strong>First Name:</strong> {1} <br><strong>Last Name:</strong> {2} <br><strong>Birth Date:</strong> {3} <br><strong>Licenses:</strong> {4}</div></div>',
-                    args = {
-                        'Drivers License',
-                        item.info.firstname,
-                        item.info.lastname,
-                        item.info.birthdate,
-                        item.info.type
-                    }
-                })--]]
-            end
-        end
     else
         UseItem(itemData.name, src, itemData)
         TriggerClientEvent('qb-inventory:client:ItemBox', src, itemInfo, 'use')
@@ -306,11 +286,12 @@ RegisterNetEvent('qb-inventory:server:openDrop', function(dropId)
         slots = drop.slots,
         inventory = drop.items
     }
-    drop.isOpen = false
+    drop.isOpen = src
     TriggerClientEvent('qb-inventory:client:openInventory', source, Player.PlayerData.items, formattedInventory)
 end)
 
 RegisterNetEvent('qb-inventory:server:updateDrop', function(dropId, coords)
+    if not dropId or not Drops[dropId] then return end
     Drops[dropId].coords = coords
 end)
 

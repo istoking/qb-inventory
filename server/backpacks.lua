@@ -6,7 +6,9 @@ local QBCore = exports['qb-core']:GetCoreObject()
 Backpacks = Backpacks or {}
 
 local function DebugPrint(msg)
-    if Config.Backpacks and Config.Backpacks.Debug then
+    if Config and Config.Debug and Config.Debug.Enabled and Config.Debug.Backpacks then
+        print(('^3[qb-inventory:backpacks]^0 %s'):format(msg))
+    elseif Config.Backpacks and Config.Backpacks.Debug then
         print(('^3[qb-inventory:backpacks]^0 %s'):format(msg))
     end
 end
@@ -48,7 +50,7 @@ local function BuildCaches()
                 for _, v in ipairs(entry.whitelist) do
                     wl[NormalizeItemName(v)] = true
                 end
-                entry.whitelist = wl
+                entry.whitelist = next(wl) and wl or nil
             end
 
             if entry.blacklist and type(entry.blacklist) == 'table' then
@@ -56,7 +58,7 @@ local function BuildCaches()
                 for _, v in ipairs(entry.blacklist) do
                     bl[NormalizeItemName(v)] = true
                 end
-                entry.blacklist = bl
+                entry.blacklist = next(bl) and bl or nil
             end
 
             BackpackDefs[itemName] = entry
@@ -166,42 +168,91 @@ local function EnsureBackpackMetadata(src, item, def)
         meta.quality = meta.quality or 100
 
         item.info = meta
-        Player.Functions.SetInventory(Player.PlayerData.items)
+        if item.slot and Player.PlayerData.items[item.slot] then
+            Player.PlayerData.items[item.slot].info = meta
+        end
+        Player.Functions.SetPlayerData('items', Player.PlayerData.items)
+        SaveInventory(src)
         DebugPrint(('Assigned new backpackId %s for %s'):format(backpackId, def.item))
     else
         -- Normalize fields for future-proofing
         meta.ID = meta.ID or backpackId
         meta.backpackId = meta.backpackId or backpackId
         meta.backpackType = meta.backpackType or def.item
+        meta.slots = meta.slots or def.slots
+        meta.maxweight = meta.maxweight or def.maxweight
         item.info = meta
+        if item.slot and Player.PlayerData.items[item.slot] then
+            Player.PlayerData.items[item.slot].info = meta
+        end
+    end
+
+    if item.slot and Player.PlayerData.items[item.slot] then
+        Player.PlayerData.items[item.slot] = item
     end
 
     return meta, backpackId
 end
 
 local function OpenBackpack(src, item)
-    if not item or not item.name then return end
+    if not item or not item.name then return false end
     local itemName = NormalizeItemName(item.name)
     local def = GetBackpackDef(itemName)
-    if not def then return end
+    DebugPrint(('useItem src=%s item=%s slot=%s'):format(src, tostring(itemName), tostring(item.slot)))
+    if not def then
+        DebugPrint(('OpenBackpack missing definition for %s'):format(tostring(itemName)))
+        return false
+    end
 
     if not CheckJobLock(src, def) then
         Notify(src, 'This backpack is restricted to certain jobs.', 'error')
-        return
+        return false
     end
 
     if Config.Backpacks and Config.Backpacks.RestrictMultipleBackpacks then
         local count = CountPlayerBackpacks(src)
-        if count > (Config.Backpacks.MaxAllowedBackpacks or 2) then
-            Notify(src, ('You can only carry %d backpacks.'):format(Config.Backpacks.MaxAllowedBackpacks or 2), 'error')
-            return
+        local limit = Config.Backpacks.MaxAllowedBackpacks or 2
+        if count > limit then
+            DebugPrint(('OpenBackpack carry warning src=%s count=%s limit=%s'):format(src, count, limit))
         end
     end
 
     local meta, backpackId = EnsureBackpackMetadata(src, item, def)
-    if not backpackId then return end
+    if not backpackId then
+        DebugPrint(('OpenBackpack failed metadata src=%s item=%s'):format(src, tostring(itemName)))
+        return false
+    end
 
     local stashId = MakeStashId(backpackId)
+    local PlayerObj = QBCore.Functions.GetPlayer(src)
+    if not PlayerObj then return false end
+
+    local inventory = GetInventory(stashId)
+    if inventory and inventory.isOpen and inventory.isOpen ~= src then
+        Notify(src, 'This inventory is currently in use', 'error')
+        DebugPrint(('OpenBackpack blocked in-use stash=%s opener=%s'):format(stashId, tostring(inventory.isOpen)))
+        return false
+    end
+
+    if not inventory then
+        CreateInventory(stashId, {
+            label = def.label or 'Backpack',
+            slots = def.slots or 20,
+            maxweight = def.maxweight or 200000,
+        })
+        inventory = GetInventory(stashId)
+    else
+        inventory.label = def.label or inventory.label or 'Backpack'
+        inventory.slots = def.slots or inventory.slots or 20
+        inventory.maxweight = def.maxweight or inventory.maxweight or 200000
+    end
+
+    if not inventory then
+        DebugPrint(('OpenBackpack failed to create inventory stash=%s'):format(stashId))
+        return false
+    end
+
+    inventory.isOpen = false
     OpenBackpackStashes[stashId] = {
         src = src,
         itemName = def.item,
@@ -209,17 +260,23 @@ local function OpenBackpack(src, item)
         ts = os.time(),
     }
 
-    -- Ensure inv_busy is cleared before opening a stash (prevents rare stuck states)
     if Player(src).state.inv_busy then
         Player(src).state.inv_busy = false
-        Wait(0)
     end
 
+    DebugPrint(('Opening backpack stash=%s src=%s slots=%s maxweight=%s'):format(stashId, src, inventory.slots, inventory.maxweight))
     OpenInventory(src, stashId, {
-        label = def.label or 'Backpack',
-        slots = def.slots or 20,
-        maxweight = def.maxweight or 200000,
+        label = inventory.label,
+        slots = inventory.slots,
+        maxweight = inventory.maxweight,
     })
+    return true
+
+end
+
+
+function Backpacks.Open(src, item)
+    return OpenBackpack(src, item)
 end
 
 function Backpacks.IsBackpackStash(inventoryId)

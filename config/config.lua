@@ -1,67 +1,70 @@
-Config = {
-    UseTarget = GetConvar('UseTarget', 'false') == 'true',
+Config = Config or {}
 
-    MaxWeight = 250000,
-    MaxSlots = 50,
+Config.UseTarget = GetConvar('UseTarget', 'false') == 'true'
 
-    StashSize = {
-        maxweight = 2000000,
-        slots = 100
-    },
+Config.MaxWeight = 250000
+Config.MaxSlots = 50
 
-    DropSize = {
-        maxweight = 1000000,
-        slots = 50
-    },
+Config.StashSize = {
+    maxweight = 2000000,
+    slots = 100
+}
 
-    Keybinds = {
-        Open = 'TAB',
-        Hotbar = 'Z',
-    },
+Config.DropSize = {
+    maxweight = 1000000,
+    slots = 50
+}
 
-    CleanupDropTime = 15,    -- in minutes
-    CleanupDropInterval = 1, -- in minutes
+Config.Keybinds = {
+    Open = 'TAB',
+    Hotbar = 'Z',
+}
 
-    ItemDropObject = `bkr_prop_duffel_bag_01a`,
-    ItemDropObjectBone = 28422,
-    ItemDropObjectOffset = {
-        vector3(0.260000, 0.040000, 0.000000),
-        vector3(90.000000, 0.000000, -78.989998),
-    },
+Config.CleanupDropTime = 15
+Config.CleanupDropInterval = 1
 
-    VendingObjects = {
-        'prop_vend_soda_01',
-        'prop_vend_soda_02',
-        'prop_vend_water_01',
-        'prop_vend_coffe_01',
-    },
+Config.ItemDropObject = `bkr_prop_duffel_bag_01a`
+Config.ItemDropObjectBone = 28422
+Config.ItemDropObjectOffset = {
+    vector3(0.260000, 0.040000, 0.000000),
+    vector3(90.000000, 0.000000, -78.989998),
+}
 
-    VendingItems = {
-        { name = 'kurkakola',    price = 4, amount = 50 },
-        { name = 'water_bottle', price = 4, amount = 50 },
-    },
+Config.VendingObjects = {
+    'prop_vend_soda_01',
+    'prop_vend_soda_02',
+    'prop_vend_water_01',
+    'prop_vend_coffe_01',
+}
 
+Config.VendingItems = {
+    { name = 'kurkakola',    price = 4, amount = 50 },
+    { name = 'water_bottle', price = 4, amount = 50 },
+}
 
-    -- Drop inventories should NOT persist forever. This is a hard-expiry (even if left open).
-    DropExpiryMinutes = 60,
+Config.DropExpiryMinutes = 60
 
-    -- Gradually purge persisted drop-* inventories from the DB to avoid startup spikes.
-    DropDBPurge = {
-        enabled = true,
-        intervalMinutes = 10,
-        batchSize = 50,
-        startDelaySeconds = 120,
-        debug = false,
-    },
+Config.DropDBPurge = {
+    enabled = true,
+    intervalMinutes = 10,
+    batchSize = 50,
+    startDelaySeconds = 120,
+    debug = false,
+}
 
-    -- Gradually purge orphaned trunk-/glovebox- inventories that no longer have a matching vehicle plate.
-    OrphanCleanup = {
-        enabled = true,
-        intervalMinutes = 10,
-        batchSize = 50,
-        startDelaySeconds = 120,
-        vehicleTable = 'player_vehicles',
-        plateColumn = 'plate',
-        debug = false,
-    },
+Config.OrphanCleanup = {
+    enabled = true,
+    intervalMinutes = 10,
+    batchSize = 50,
+    startDelaySeconds = 120,
+    vehicleTable = 'player_vehicles',
+    plateColumn = 'plate',
+    debug = false,
+}
+
+Config.Debug = Config.Debug or {
+    Enabled = true,
+    Backpacks = true,
+    Drops = true,
+    Moves = true,
 }

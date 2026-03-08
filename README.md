@@ -1,4 +1,4 @@
-# qb-inventory
+# qb-inventory v2.0.3
 # Customized `qb-inventory` for QBCore, with a redesigned inventory UI, backpack support, currency storage guardrails, inventory window move/resize support, and ongoing cleanup for stale vehicle and drop inventories.
 
 ## Dependencies

@@ -125,7 +125,7 @@ exports('SaveInventory', SaveInventory)
 function SetInventory(identifier, items, reason)
     local player = QBCore.Functions.GetPlayer(identifier)
 
-    if not player and not EnsureInventoryLoaded(identifier) and not Drops[identifier] then
+    if not player and not Drops[identifier] and not EnsureInventoryLoaded(identifier) then
         print('SetInventory: Inventory not found')
         return
     end
@@ -857,10 +857,10 @@ function RemoveItem(identifier, item, amount, slot, reason)
 
     if player then
         inventory = player.PlayerData.items
-    elseif EnsureInventoryLoaded(identifier) then
-        inventory = Inventories[identifier].items
     elseif Drops[identifier] then
         inventory = Drops[identifier].items
+    elseif EnsureInventoryLoaded(identifier) then
+        inventory = Inventories[identifier].items
     end
 
     if not inventory then

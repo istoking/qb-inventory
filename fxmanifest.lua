@@ -1,9 +1,9 @@
 fx_version 'cerulean'
 game 'gta5'
 lua54 'yes'
-author 'Kakarot - IRP edit'
+author 'Kakarot - IRP Edit'
 description 'Player inventory system providing a variety of features for storing and managing items'
-version '2.0.1'
+version '2.0.3'
 
 shared_scripts {
     '@qb-core/shared/locale.lua',
@@ -38,3 +38,11 @@ files {
 }
 
 dependency 'qb-weapons'
+
+exports {
+    'HasItem'
+}
+
+server_exports {
+    'HasItem'
+}

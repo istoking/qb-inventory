@@ -107,8 +107,16 @@ end)
 -- Thread
 
 CreateThread(function()
+    local drawTextVisible = false
+
     while true do
         if HoldingDrop then
+            if not drawTextVisible then
+                drawTextVisible = true
+            end
+
+            exports['qb-core']:DrawText('Press [G] to drop the bag')
+
             if IsControlJustPressed(0, 47) then
                 DetachEntity(bagObject, true, true)
                 local coords = GetEntityCoords(PlayerPedId())
@@ -121,8 +129,13 @@ CreateThread(function()
                 HoldingDrop = false
                 bagObject = nil
                 heldDrop = nil
+                drawTextVisible = false
             end
+        elseif drawTextVisible then
+            exports['qb-core']:HideText()
+            drawTextVisible = false
         end
+
         Wait(0)
     end
 end)

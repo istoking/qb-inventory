@@ -1112,7 +1112,8 @@ const InventoryContainer = Vue.createApp({
             inventory: 'player',
             item: item
           })
-          if (item.shouldClose) {
+          const isBackpack = ['backpack1', 'backpack2', 'backpack3'].includes((item.name || '').toLowerCase())
+          if (item.shouldClose && !isBackpack) {
             this.closeInventory()
           }
         } catch (error) {
