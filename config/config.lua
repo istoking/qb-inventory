@@ -63,7 +63,7 @@ Config.OrphanCleanup = {
 }
 
 Config.Debug = Config.Debug or {
-    Enabled = true,
+    Enabled = false,
     Backpacks = true,
     Drops = true,
     Moves = true,

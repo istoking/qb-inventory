@@ -3,7 +3,7 @@ game 'gta5'
 lua54 'yes'
 author 'Kakarot - IRP Edit'
 description 'Player inventory system providing a variety of features for storing and managing items'
-version '2.0.3'
+version '2.0.4'
 
 shared_scripts {
     '@qb-core/shared/locale.lua',
