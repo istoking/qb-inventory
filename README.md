@@ -33,6 +33,11 @@ https://docs.qbcore.org/qbcore-documentation/qbcore-resources/qb-inventory
 ### With Item Box
 ![With Item Box](screenshots/with-itembox.jpg)
 
+### Backpacks
+![Backpack1](screenshots/backpack1.jpg)
+![Backpack2](screenshots/backpack2.jpg)
+![Backpack3](screenshots/backpack3.jpg)
+
 ### Inventory redesign
 This version includes a full visual pass over the standard `qb-inventory` layout.
 
